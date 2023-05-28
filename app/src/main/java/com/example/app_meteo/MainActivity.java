@@ -147,23 +147,34 @@ public class MainActivity extends AppCompatActivity implements LocationListener{
     }
 
     private void getWeatherFromAPI(String location){
+        //Ogni volta che chiamiamo questa funzione, vuol dire che
+        //abbiamo fatto un update delle condizioni meteo
         Date localDateTime = new Date();
         SimpleDateFormat dateFormat = new SimpleDateFormat("dd MMMM HH:mm", Locale.US);
         String time = "Last updated at: " + dateFormat.format(localDateTime);
 
+        //aggiorniamo quindi la data del "last update" nella schermata principale.
         lastUpdatedView.setText(time);
 
+        //Recuperare i dati da una API é una funzione asincrona. Questo perché ci mette
+        //in media qualche secondo. Il nostro processo principale non puó aspettare tanto tempo e
+        //perció creiamo un altro thread, in modo che mentre le informazioni vengono ricavate
+        //dal server, noi possiamo continuare ad usare l'app.
         Thread thread = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
+                    //Creiamo un url ed una connessione al nostro server.
                     URL url = new URL(API_ENDPOINT + "?q=" + posizione + "&appid=" + apiKey);
                     HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                     connection.setRequestMethod("GET");
 
                     int responseCode = connection.getResponseCode();
 
+                    //Se il codice di risposta (tipo 400, 404, 200 ecc..) é OK, ovvero 200
+                    //vuol dire che abbiamo ricevuto una risposta.
                     if (responseCode == HttpURLConnection.HTTP_OK) {
+                        //What the fuck
                         BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
                         String line;
                         StringBuilder response = new StringBuilder();
@@ -172,28 +183,49 @@ public class MainActivity extends AppCompatActivity implements LocationListener{
                             response.append(line);
                         }
                         reader.close();
-
+                        //Fino ad ora con una magia abbiamo trasformato la risposta del server
+                        //in una stringa
                         String jsonResponse = response.toString();
 
+                        //L'object mapper ci permette di associare un json ad una classe.
+                        //Un file json ha una chiave ed un valore
+                        //Esempio : {"nome" : "Francesco"}
+                        //Anche una classe alla fine ha un funzionamento simile, avendo
+                        //una variabile con un nome e un suo contenuto.
                         ObjectMapper objectMapper = new ObjectMapper();
+                        //questa configurazione ci permette di non far crashare l'intera applicazione
+                        //nel caso incontra qualche campo che non abbiamo messo nella classe
                         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
+                        //il readValue() accetta una stringa JSON e una classe con tutti i valori da associare.
+                        //Esempio: se noi abbiamo un json {"nome" : "Francesco"} avremo bisogno di una classe del tipo
+                        // MiaClasse{
+                        //      String nome;
+                        // }
                         final InfoMeteo infoMeteo = objectMapper.readValue(jsonResponse, InfoMeteo.class);
 
                         if(infoMeteo != null){
+                            //What the fuck pt.2
+                            //Android studio ha richieste molto particolari purtroppo
                             runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
+                                    //Temperature varie da Kelvin in Celsius
                                     String temp = String.valueOf((int)infoMeteo.main.temp -273) + " °C";
-
                                     String min_temp = "Min: " + String.valueOf((int)infoMeteo.main.temp_min - 273) +  " °C";
                                     String max_temp = "Max: " + String.valueOf((int)infoMeteo.main.temp_max - 273) +  " °C";
 
+                                    //Temperatura del vento da m/s a km/h
                                     String wind_speed = String.valueOf(Math.round(infoMeteo.wind.speed * 3.6))+ " km/h";
 
+                                    //Caso particolare: Il server in questo caso ci ritorna come data
+                                    //i secondi passati non ricordo se dalla nascita di cristo oppure dal 1970
+                                    //In ogni caso, la classe Date accetta un valore in millisecondi,
+                                    //quindi prendiamo e moltiplichiamo tutto per mille
                                     Date sunrise_date = new Date(infoMeteo.sys.sunrise * 1000);
                                     Date sunset_date = new Date(infoMeteo.sys.sunset * 1000);
 
+                                    //Formattazione della data in un formato leggibile tipo 17:30
                                     SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm", Locale.US);
 
                                     String sunrise_time = dateFormat.format(sunrise_date);
@@ -207,7 +239,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener{
                                     sunriseTimeView.setText(sunrise_time);
                                     sunsetTimeView.setText(sunset_time);
 
-                                    String weather = "clear"; //infoMeteo.weather.get(0).main;
+                                    String weather = infoMeteo.weather.get(0).main;
                                     conditionView.setText(weather);
 
                                     int bgResource = R.drawable.sunny_background;
@@ -216,26 +248,33 @@ public class MainActivity extends AppCompatActivity implements LocationListener{
                                         bgResource = R.drawable.night_sky;
                                     }
 
-                                    if(weather.contains("cloud")){
+                                    if(weather.toLowerCase().contains("cloud")){
                                         bgResource = R.drawable.cloudy_background;
                                     }
-                                    if(weather.contains("rain")){
+                                    if(weather.toLowerCase().contains("rain")){
                                         bgResource = R.drawable.rainy_background;
                                     }
 
                                     mainContentView.setBackgroundResource(bgResource);
                                 }
 
+                                //Evil string manipulation hack
+                                //La funzione accetta una stringa del tipo "19:30"
+                                //e ora capirai il perché. "19:30" é l'orario del tramonto
                                 boolean checkIfItIsNight(String timeHHmm){
+                                    //Prima ci prendiamo l'ora e il minuto del giorno attuali
                                     Calendar calendar = Calendar.getInstance();
                                     int currentHour = calendar.get(Calendar.HOUR_OF_DAY);
                                     int currentMinute = calendar.get(Calendar.MINUTE);
 
-                                    String sunsetTime = "18:30"; // Example sunset time
-                                    String[] sunsetParts = sunsetTime.split(":");
+                                    //Per ottenere l'ora e il minuto del tramonto,
+                                    //dividiamo 19:30 in un array di due stringhe,
+                                    //ovvero 19 e 30. Li divideremo in base ai due punti
+                                    String[] sunsetParts = timeHHmm.split(":");
                                     int sunsetHour = Integer.parseInt(sunsetParts[0]);
                                     int sunsetMinute = Integer.parseInt(sunsetParts[1]);
 
+                                    //Boolean magico
                                     boolean isAfterSunset;
 
                                     if (currentHour > sunsetHour) {
